@@ -1,0 +1,22 @@
+serverUrl: tcp://192.168.1.142:1883
+username: relay
+password: relay
+clientId: aggregator
+aggregations:
+  - type: NAND
+    in:
+      - sensors/HyruleCastle/thermostat
+      - sensors/DiningRoom/thermostat
+      - sensors/Study/thermostat
+      - sensors/LivingRoom/thermostat
+      - sensors/Girls/thermostat
+      - sensors/MasterBedroom/thermostat
+    out: heating/wall/set
+  - type: NAND
+    in:
+      - sensors/Kitchen/thermostat
+      - sensors/Toilet/thermostat
+      - sensors/KidsBathroom/thermostat
+      - sensors/MasterBathroom/thermostat
+      - sensors/Hallway/thermostat
+    out: heating/floor/set
