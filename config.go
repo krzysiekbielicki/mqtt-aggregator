@@ -51,8 +51,9 @@ type Aggregation struct {
 type AggregationType string
 
 const (
-	AND  AggregationType = "AND"
-	NAND AggregationType = "NAND"
-	OR   AggregationType = "OR"
-	NOR  AggregationType = "NOR"
+	AND     AggregationType = "AND"
+	NAND    AggregationType = "NAND"
+	OR      AggregationType = "OR"
+	NOR     AggregationType = "NOR"
+	FORWARD AggregationType = "FORWARD"
 )

@@ -20,7 +20,6 @@ var cm *autopaho.ConnectionManager
 var ctx context.Context
 
 func main() {
-	fmt.Println("Hello, World!")
 	serverUrl, err := url.Parse(conf.ServerUrl)
 	if err != nil {
 		fmt.Print(err)
@@ -112,28 +111,40 @@ func runAggregation(topic string) {
 
 func aggregate(aggregation Aggregation) {
 	var values = make([]bool, len(aggregation.InTopics))
+	fmt.Print("Aggregate items: ")
 	for i, topic := range aggregation.InTopics {
 		v, exists := topicValues[topic]
 		if !exists {
-			return
+			v = false
 		}
 		values[i] = v
+		fmt.Printf("%s = %t, ", topic, v)
 	}
 	switch aggregation.AggregationType {
 	case NAND:
 		nandAggregate(values, aggregation.OutTopic)
+	case FORWARD:
+		forwardAggregate(values, aggregation.OutTopic)
 	}
 }
 
 func nandAggregate(values []bool, topic string) {
-	var res = true
+	var res = false
 	for _, value := range values {
-		if !value {
-			res = false
+		if value {
+			res = true
 			break
 		}
 	}
+	fmt.Printf("NAND aggregate result %t\n", res)
 	publishResult(res, topic)
+}
+
+func forwardAggregate(values []bool, topic string) {
+	for _, value := range values {
+		fmt.Printf("FORWARD aggregate result %t\n", value)
+		publishResult(value, topic)
+	}
 }
 
 func publishResult(res bool, topic string) {

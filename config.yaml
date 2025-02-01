@@ -5,18 +5,18 @@ clientId: aggregator
 aggregations:
   - type: NAND
     in:
-      - sensors/HyruleCastle/thermostat
-      - sensors/DiningRoom/thermostat
-      - sensors/Study/thermostat
-      - sensors/LivingRoom/thermostat
-      - sensors/Girls/thermostat
-      - sensors/MasterBedroom/thermostat
+      - thermostat/HyruleCastle
+      - thermostat/DiningRoom
+      - thermostat/Study
+      - thermostat/LivingRoom
+      - thermostat/Girls
+      - thermostat/MasterBedroom
     out: heating/wall/set
   - type: NAND
     in:
-      - sensors/Kitchen/thermostat
-      - sensors/Toilet/thermostat
-      - sensors/KidsBathroom/thermostat
-      - sensors/MasterBathroom/thermostat
-      - sensors/Hallway/thermostat
+      - thermostat/Kitchen
+      - thermostat/Toilet
+      - thermostat/KidsBathroom
+      - thermostat/MasterBathroom
+      - thermostat/Hallway
     out: heating/floor/set
