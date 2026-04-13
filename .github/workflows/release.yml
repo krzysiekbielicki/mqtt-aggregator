@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            goarm: ""
+            suffix: linux-amd64
+          - goarch: arm
+            goarm: "6"
+            suffix: linux-armv6
+          - goarch: arm
+            goarm: "7"
+            suffix: linux-armv7
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -o mqtt-aggregator-${{ matrix.suffix }} .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mqtt-aggregator-${{ matrix.suffix }}
