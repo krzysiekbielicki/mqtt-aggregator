@@ -124,7 +124,7 @@ func aggregate(aggregation Aggregation) {
 	case NAND:
 		nandAggregate(values, aggregation.OutTopic)
 	case FORWARD:
-		forwardAggregate(values, aggregation.OutTopic)
+		forwardAggregate(values, aggregation.OutTopic, aggregation.NewValue)
 	}
 }
 
@@ -140,10 +140,18 @@ func nandAggregate(values []bool, topic string) {
 	publishResult(res, topic)
 }
 
-func forwardAggregate(values []bool, topic string) {
+func forwardAggregate(values []bool, topic string, newValue *string) {
 	for _, value := range values {
-		fmt.Printf("FORWARD aggregate result %t\n", value)
-		publishResult(value, topic)
+		if newValue != nil {
+			fmt.Printf("FORWARD aggregate result %s\n", *newValue)
+			cm.PublishViaQueue(ctx, &autopaho.QueuePublish{&paho.Publish{
+				Topic:   topic,
+				Payload: []byte(*newValue),
+			}})
+		} else {
+			fmt.Printf("FORWARD aggregate result %t\n", value)
+			publishResult(value, topic)
+		}
 	}
 }
 

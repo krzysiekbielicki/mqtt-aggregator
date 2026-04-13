@@ -46,6 +46,7 @@ type Aggregation struct {
 	AggregationType AggregationType `yaml:"type"`
 	OutTopic        string          `yaml:"out"`
 	InTopics        []string        `yaml:"in"`
+	NewValue        *string         `yaml:"newValue"`
 }
 
 type AggregationType string
