@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/signal"
@@ -15,17 +16,27 @@ import (
 	"github.com/eclipse/paho.golang/paho/session/state"
 )
 
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.MessageKey {
+			a.Key = "message"
+		}
+		return a
+	},
+}))
+
 var conf = config("./config.yaml")
 var cm *autopaho.ConnectionManager
 var ctx context.Context
 
 func main() {
+	slog.SetDefault(logger)
 	serverUrl, err := url.Parse(conf.ServerUrl)
 	if err != nil {
-		fmt.Print(err)
+		logger.Error("Failed to parse server URL", "error", err, "serverUrl", conf.ServerUrl)
 		return
 	}
-	fmt.Println(conf.ServerUrl)
+	logger.Info("MQTT aggregator starting", "serverUrl", conf.ServerUrl)
 	cliCfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{serverUrl},
 		ConnectUsername:               conf.Username,
@@ -34,16 +45,16 @@ func main() {
 		CleanStartOnInitialConnection: false, // the default
 		SessionExpiryInterval:         60,    // Session remains live 60 seconds after disconnect
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-			fmt.Println("mqtt connection up")
+			logger.Info("MQTT connection up")
 			if _, err := cm.Subscribe(context.Background(), &paho.Subscribe{
 				Subscriptions: conf.inTopics(),
 			}); err != nil {
-				fmt.Printf("failed to subscribe (%s). This is likely to mean no messages will be received.", err)
+				logger.Error("Failed to subscribe", "error", err)
 				return
 			}
-			fmt.Println("mqtt subscription made")
+			logger.Info("MQTT subscription made")
 		},
-		OnConnectError: func(err error) { fmt.Printf("error whilst attempting connection: %s\n", err) },
+		OnConnectError: func(err error) { logger.Error("Error whilst attempting connection", "error", err) },
 		ClientConfig: paho.ClientConfig{
 			ClientID: conf.ClientID,
 			Session:  state.NewInMemory(),
@@ -52,12 +63,12 @@ func main() {
 					handle(pr.Packet)
 					return true, nil
 				}},
-			OnClientError: func(err error) { fmt.Printf("client error: %s\n", err) },
+			OnClientError: func(err error) { logger.Error("Client error", "error", err) },
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
-					fmt.Printf("server requested disconnect: %s\n", d.Properties.ReasonString)
+					logger.Warn("Server requested disconnect", "reason", d.Properties.ReasonString)
 				} else {
-					fmt.Printf("server requested disconnect; reason code: %d\n", d.ReasonCode)
+					logger.Warn("Server requested disconnect", "reasonCode", d.ReasonCode)
 				}
 			},
 		},
@@ -80,14 +91,14 @@ func main() {
 	signal.Notify(sig, syscall.SIGTERM)
 
 	<-sig
-	fmt.Println("signal caught - exiting")
+	logger.Info("Signal caught - exiting")
 
 	// We could cancel the context at this point but will call Disconnect instead (this waits for autopaho to shutdown)
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = cm.Disconnect(ctx)
 
-	fmt.Println("shutdown complete")
+	logger.Info("Shutdown complete")
 }
 
 var topicValues = make(map[string]bool)
@@ -98,6 +109,8 @@ func handle(packet *paho.Publish) {
 	if err == nil && topicValues[packet.Topic] != v {
 		topicValues[packet.Topic] = v
 		runAggregation(packet.Topic)
+	} else if err != nil {
+		logger.Warn("Failed to parse input payload as bool", "topic", packet.Topic, "payload", string(packet.Payload), "error", err)
 	}
 }
 
@@ -109,26 +122,36 @@ func runAggregation(topic string) {
 	}
 }
 
+type aggregationInput struct {
+	Topic string `json:"topic"`
+	Value string `json:"value"`
+}
+
+type aggregationResult struct {
+	Topic string `json:"topic"`
+	Value string `json:"value"`
+}
+
 func aggregate(aggregation Aggregation) {
 	var values = make([]bool, len(aggregation.InTopics))
-	fmt.Print("Aggregate items: ")
+	input := make([]aggregationInput, len(aggregation.InTopics))
 	for i, topic := range aggregation.InTopics {
 		v, exists := topicValues[topic]
 		if !exists {
 			v = false
 		}
 		values[i] = v
-		fmt.Printf("%s = %t, ", topic, v)
+		input[i] = aggregationInput{Topic: topic, Value: strconv.FormatBool(v)}
 	}
 	switch aggregation.AggregationType {
 	case NAND:
-		nandAggregate(values, aggregation.OutTopic)
+		nandAggregate(values, aggregation, input)
 	case FORWARD:
-		forwardAggregate(values, aggregation.OutTopic, aggregation.NewValue)
+		forwardAggregate(values, aggregation, input)
 	}
 }
 
-func nandAggregate(values []bool, topic string) {
+func nandAggregate(values []bool, aggregation Aggregation, input []aggregationInput) {
 	var res = false
 	for _, value := range values {
 		if value {
@@ -136,28 +159,22 @@ func nandAggregate(values []bool, topic string) {
 			break
 		}
 	}
-	fmt.Printf("NAND aggregate result %t\n", res)
-	publishResult(res, topic)
+	publishBoolResult(res, aggregation, input)
 }
 
-func forwardAggregate(values []bool, topic string, newValue *string) {
+func forwardAggregate(values []bool, aggregation Aggregation, input []aggregationInput) {
 	for _, value := range values {
-		if newValue != nil {
-			fmt.Printf("FORWARD aggregate result %s\n", *newValue)
-			cm.PublishViaQueue(ctx, &autopaho.QueuePublish{&paho.Publish{
-				Topic:   topic,
-				Payload: []byte(*newValue),
-			}})
+		if aggregation.NewValue != nil {
+			publishStringResult(*aggregation.NewValue, aggregation, input)
 		} else {
-			fmt.Printf("FORWARD aggregate result %t\n", value)
-			publishResult(value, topic)
+			publishBoolResult(value, aggregation, input)
 		}
 	}
 }
 
-func publishResult(res bool, topic string) {
-	if outValues[topic] != res {
-		outValues[topic] = res
+func publishBoolResult(res bool, aggregation Aggregation, input []aggregationInput) {
+	if outValues[aggregation.OutTopic] != res {
+		outValues[aggregation.OutTopic] = res
 		var payload string
 		if res {
 			payload = "1"
@@ -165,11 +182,29 @@ func publishResult(res bool, topic string) {
 			payload = "0"
 		}
 		cm.PublishViaQueue(ctx, &autopaho.QueuePublish{&paho.Publish{
-			Topic:   topic,
+			Topic:   aggregation.OutTopic,
 			Payload: []byte(payload),
 		}})
-		fmt.Printf("Should publish %t onto topic %s \n", res, topic)
+		logAggregationResult(aggregation, strconv.FormatBool(res), input)
 	}
+}
+
+func publishStringResult(value string, aggregation Aggregation, input []aggregationInput) {
+	cm.PublishViaQueue(ctx, &autopaho.QueuePublish{&paho.Publish{
+		Topic:   aggregation.OutTopic,
+		Payload: []byte(value),
+	}})
+	logAggregationResult(aggregation, value, input)
+}
+
+func logAggregationResult(aggregation Aggregation, value string, input []aggregationInput) {
+	message := fmt.Sprintf("%s %s result %s", aggregation.OutTopic, aggregation.AggregationType, value)
+	logger.Info(
+		message,
+		"result", aggregationResult{Topic: aggregation.OutTopic, Value: value},
+		"aggregation", aggregation.AggregationType,
+		"input", input,
+	)
 }
 
 func Any(arr []string, s string) bool {

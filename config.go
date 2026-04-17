@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/eclipse/paho.golang/paho"
@@ -12,7 +11,6 @@ func config(path string) Config {
 	dat, err := os.ReadFile(path)
 	check(err)
 	var config Config
-	fmt.Println(string(dat))
 	err = yaml.Unmarshal(dat, &config)
 	check(err)
 	return config
