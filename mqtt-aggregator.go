@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -197,8 +198,9 @@ func publishStringResult(value string, aggregation Aggregation, input []aggregat
 }
 
 func logAggregationResult(aggregation Aggregation, value string, input []aggregationInput) {
+	message := strings.Join([]string{aggregation.OutTopic, string(aggregation.AggregationType), "result", value}, " ")
 	logger.Info(
-		aggregation.OutTopic+" "+string(aggregation.AggregationType)+" result "+value,
+		message,
 		"result", aggregationResult{Topic: aggregation.OutTopic, Value: value},
 		"aggregation", aggregation.AggregationType,
 		"input", input,
