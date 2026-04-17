@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
@@ -197,7 +198,7 @@ func publishStringResult(value string, aggregation Aggregation, input []aggregat
 }
 
 func logAggregationResult(aggregation Aggregation, value string, input []aggregationInput) {
-	message := aggregation.OutTopic + " " + string(aggregation.AggregationType) + " result " + value
+	message := fmt.Sprintf("%s %s result %s", aggregation.OutTopic, aggregation.AggregationType, value)
 	logger.Info(
 		message,
 		"result", aggregationResult{Topic: aggregation.OutTopic, Value: value},
